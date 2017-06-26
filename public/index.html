@@ -1,0 +1,110 @@
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Chat</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="/node_modules/angular/angular.js"></script>
+    <link rel="stylesheet" href="/node_modules/bootstrap/dist/css/bootstrap.css">
+</head>
+
+<body ng-app="tchatApp" class="container" ng-controller="TchatController as tchat">
+<h1>Hello World</h1>
+<div ng-show="tchat.isDisconnected">
+    <h3>Choisissez un pseudo pour rejoindre le tchat :</h3>
+    <form class="form-inline" name="loginForm" ng-submit="tchat.loginUser()">
+        <input type="text" class="form-control" placeholder="Votre pseudo ..." required ng-model="tchat.pseudo">
+        <input type="submit" class="btn btn-primary" value="Rejoindre">
+    </form>
+</div>
+<div ng-hide="tchat.isDisconnected">
+    <main class="col-md-9">
+        <div class="well well-sm">
+            <div ng-repeat="message in tchat.messages | limitTo : 10 : $last-10">
+                <strong>{{ message.pseudo }}</strong> &gt; {{ message.content }}
+                <u>{{ message.date | date : 'Le dd/MM à HH:mm' }}</u>
+            </div>
+        </div>
+
+        <form class="form-inline" name="messageForm" ng-submit="tchat.sendMessage()">
+            <p><em>(Connecté en tant que <strong>{{ tchat.pseudo }}</strong>)</em></p>
+            <input type="text" class="form-control" placeholder="Votre message ..." size="50" required
+                   ng-model="tchat.messageContent">
+            <input type="submit" class="btn btn-primary" value="Envoyer">
+        </form>
+    </main>
+
+    <aside class="col-md-3">
+        <h4>Membres connectés</h4>
+        <ul>
+            <li ng-repeat="user in tchat.users">{{ user.pseudo }} <span
+                    ng-show="user.id === tchat.socket.id">(vous)</span></li>
+        </ul>
+    </aside>
+</div>
+<script>
+    angular.module('tchatApp', []).controller('TchatController', ['$scope', function ($scope) {
+        var tchat = this;
+        tchat.isDisconnected = true;
+        tchat.pseudo = '';
+        tchat.users = [];
+        tchat.messages = [];
+        tchat.messageContent = "";
+
+        tchat.loginUser = function () {
+            tchat.isDisconnected = false;
+            tchat.socket = io('ws://localhost:3000');
+            tchat.socket.emit('setPseudo', tchat.pseudo);
+
+            tchat.socket.on('usersList', function (list) {
+                tchat.users = list;
+            });
+
+            tchat.socket.on('newUser', function (user) {
+                tchat.users.push(user);
+                tchat.messages.push({
+                    pseudo: 'console',
+                    content: "Welcome " + user.pseudo + " :)",
+                    date: new Date()
+                });
+
+                $scope.$apply();
+            });
+
+            tchat.socket.on('userDisconnected', function (user) {
+                tchat.users.splice(tchat.users.indexOf(user));
+                tchat.messages.push({
+                    pseudo: 'console',
+                    content: user.pseudo + " leave :(",
+                    date: new Date()
+                });
+
+                $scope.$apply();
+            });
+
+            tchat.socket.on('message', function (message) {
+                tchat.messages.push(message);
+                $scope.$apply();
+            });
+        };
+
+        tchat.sendMessage = function () {
+            if (tchat.messageContent.trim() === '')return;
+
+            var currentMessage = {
+                pseudo: tchat.pseudo,
+                content: tchat.messageContent,
+                date: new Date()
+            };
+
+            tchat.messages.push(currentMessage);
+
+            tchat.messageContent = "";
+
+            tchat.socket.emit('message', currentMessage)
+        };
+    }]);
+</script>
+
+</body>
+</html>
